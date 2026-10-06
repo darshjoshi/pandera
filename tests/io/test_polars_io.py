@@ -79,3 +79,26 @@ def test_polars_check_options_survive_yaml_roundtrip(
     assert check.error == expected_error
     with pytest.raises(SchemaError):
         loaded.validate(pl.DataFrame({"a": [-1]}))
+
+
+@pytest.mark.parametrize("fmt", ["yaml", "json"])
+def test_polars_unique_values_eq_check_roundtrip(fmt):
+    """``unique_values_eq`` stores a frozenset, serialized as a sorted list."""
+    from pandera.io import polars_io
+
+    dump, load = (
+        (polars_io.to_yaml, polars_io.from_yaml)
+        if fmt == "yaml"
+        else (polars_io.to_json, polars_io.from_json)
+    )
+    schema = pa.DataFrameSchema(
+        {"a": pa.Column(int, checks=[pa.Check.unique_values_eq([3, 1, 2])])}
+    )
+    loaded = load(dump(schema))
+
+    assert loaded == schema
+    (check,) = loaded.columns["a"].checks
+    assert check.statistics == {"values": frozenset({1, 2, 3})}
+    with pytest.raises(SchemaError):
+        loaded.validate(pl.DataFrame({"a": [1, 2]}))
+    loaded.validate(pl.DataFrame({"a": [1, 2, 3]}))

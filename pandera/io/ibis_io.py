@@ -31,6 +31,15 @@ def _serialize_check_stats(check_stats, dtype=None):
         if isinstance(stat, type) and issubclass(stat, enum.Enum):
             return [e.value for e in stat]
 
+        # Sets (e.g. unique_values_eq statistics) have no yaml/json
+        # representation; serialize them as a list, sorted when the
+        # elements are orderable so the output is deterministic.
+        if isinstance(stat, (set, frozenset)):
+            try:
+                return sorted(stat)
+            except TypeError:
+                return list(stat)
+
         if dtype is not None:
             if ibis_engine.Engine.dtype(dtypes.DateTime).check(
                 dtype

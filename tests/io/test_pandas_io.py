@@ -2745,3 +2745,52 @@ def test_named_check_survives_to_script():
     script = io.to_script(schema)
     assert "Check.greater_than" in script
     assert 'name="positive"' in script
+
+
+@pytest.mark.skipif(
+    SKIP_YAML_TESTS,
+    reason="pyyaml >= 5.1.0 required",
+)
+@pytest.mark.parametrize(
+    "serialize, deserialize",
+    [
+        [io.to_yaml, io.from_yaml],
+        [io.to_json, io.from_json],
+    ],
+)
+def test_unique_values_eq_check_serialization_roundtrip(
+    serialize, deserialize
+):
+    """``unique_values_eq`` stores a frozenset, serialized as a sorted list."""
+    schema = DataFrameSchema(
+        {
+            "a": pandera.Column(
+                int, checks=[pandera.Check.unique_values_eq([3, 1, 2])]
+            )
+        }
+    )
+    payload = serialize(schema)
+
+    loaded = deserialize(payload)
+    assert loaded == schema
+    (check,) = loaded.columns["a"].checks
+    assert check.statistics == {"values": frozenset({1, 2, 3})}
+
+    with pytest.raises(SchemaError):
+        loaded.validate(pd.DataFrame({"a": [1, 2]}))
+    loaded.validate(pd.DataFrame({"a": [1, 2, 3]}))
+
+
+def test_unique_values_eq_check_json_values_are_sorted():
+    """Serialized ``unique_values_eq`` values are a deterministic list."""
+    import json
+
+    schema = DataFrameSchema(
+        {
+            "a": pandera.Column(
+                int, checks=[pandera.Check.unique_values_eq([3, 1, 2])]
+            )
+        }
+    )
+    payload = json.loads(io.to_json(schema))
+    assert payload["columns"]["a"]["unique_values_eq"]["values"] == [1, 2, 3]

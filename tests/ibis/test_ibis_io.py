@@ -142,3 +142,27 @@ class TestIbisNamedCheckSerialization:
         assert ibis_io.from_yaml(payload).columns["a"].checks[0].error == (
             "boom"
         )
+
+
+@pytest.mark.parametrize("fmt", ["yaml", "json"])
+def test_ibis_unique_values_eq_check_roundtrip(fmt):
+    """``unique_values_eq`` stores a frozenset, serialized as a sorted list."""
+    from pandera.errors import SchemaError
+    from pandera.io import ibis_io
+
+    dump, load = (
+        (ibis_io.to_yaml, ibis_io.from_yaml)
+        if fmt == "yaml"
+        else (ibis_io.to_json, ibis_io.from_json)
+    )
+    schema = pa.DataFrameSchema(
+        {"a": pa.Column(int, checks=[pa.Check.unique_values_eq([3, 1, 2])])}
+    )
+    loaded = load(dump(schema))
+
+    assert loaded == schema
+    (check,) = loaded.columns["a"].checks
+    assert check.statistics == {"values": frozenset({1, 2, 3})}
+    with pytest.raises(SchemaError):
+        loaded.validate(ibis.memtable({"a": [1, 2]}))
+    loaded.validate(ibis.memtable({"a": [1, 2, 3]}))
